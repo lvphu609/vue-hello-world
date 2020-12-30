@@ -1,0 +1,50 @@
+version: 2
+jobs:
+  build:
+    docker:
+      - image: circleci/node:12
+    working_directory: ~/opt/apps/vue-hello-world
+    steps:
+      - checkout
+      - run: npm install
+      - run: npm run build
+      - persist_to_workspace:
+          root: .
+          paths: 
+            - .
+  deploy:
+    docker:
+      - image: circleci/node:12
+    steps:
+      - attach_workspace:
+          at: .
+      - run: 
+          name: Install wrangler
+          command: sudo npm install @cloudflare/wrangler -g --unsafe-perm=true --allow-root
+      - run:  
+          name: Input cloudflare api key
+          command: echo $CLOUDFLARE_API_KEY | sudo wrangler config
+      - run:  
+          name: Generate vue-worker
+          command: sudo wrangler generate --site vue-worker
+      - run:  
+          name: Input cloudflare account id in wrangler.toml file
+          command: sudo sed -i "s/account_id = \"\"/account_id = \"${CLOUDFLARE_ACCOUNT_ID}\"/g" vue-worker/wrangler.toml
+      - run:  
+          name: Modify path bucket in wrangler.toml file
+          command: sudo sed -i 's/bucket = ".\/public"/bucket = "..\/dist"/g' vue-worker/wrangler.toml
+      - run:  
+          name: Publish app to cloudflare
+          command: cd vue-worker && sudo wrangler publish
+workflows:
+  version: 2
+  build-and-deploy:
+    jobs:
+      - build
+      - deploy:
+          requires:
+            - build
+          filters:
+            branches:
+              only:
+                - master
